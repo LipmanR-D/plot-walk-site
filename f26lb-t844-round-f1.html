@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Plot Walk</title>
+<style>
+  :root {
+    --bg: #f6f5f1; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6a64;
+    --line: #dddbd3; --accent: #2f6b3a; --accent-ink: #ffffff;
+    --yes: #2f7d3b; --no: #b23a2e; --warn: #b7791f; --chip: #ecebe5;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { padding: 0 16px calc(16px + env(safe-area-inset-bottom)); max-width: 560px; margin: 0 auto; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .hidden { display: none !important; }
+
+  header { position: sticky; top: 0; z-index: 5; background: var(--bg);
+    padding: 10px 0 8px; border-bottom: 1px solid var(--line); }
+  .topline { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .study { font-weight: 600; font-size: 15px; }
+  .who { font-size: 13px; color: var(--muted); }
+  .status { font-size: 13px; margin-top: 4px; display: flex; justify-content: space-between; }
+  .saved { color: var(--yes); }
+  .bar { height: 6px; background: var(--chip); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+  .bar > div { height: 100%; background: var(--accent); width: 0; }
+
+  .banner { margin: 10px 0; padding: 10px 12px; border-radius: 8px; font-size: 14px;
+    background: #fbe9e7; color: #7a1f16; border: 1px solid #e8b4ad; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px; margin-top: 12px; }
+  .ident { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+  .ident .full { grid-column: 1 / -1; }
+  .label { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .plotno { font-size: 40px; font-weight: 700; line-height: 1.1; }
+  .val { font-size: 20px; font-weight: 600; word-break: break-word; }
+  .pos { font-size: 13px; color: var(--muted); text-align: right; }
+
+  h2 { font-size: 15px; margin: 18px 0 8px; display: flex; justify-content: space-between; }
+  h2 .req { font-weight: 400; font-size: 12px; color: var(--muted); }
+  .pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .pick button { padding: 18px 0; font-size: 20px; font-weight: 700; border-radius: 10px;
+    border: 2px solid var(--line); background: var(--card); }
+  .pick button.on[data-v="Yes"] { background: var(--yes); border-color: var(--yes); color: #fff; }
+  .pick button.on[data-v="No"]  { background: var(--no);  border-color: var(--no);  color: #fff; }
+  .grade { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .grade button { padding: 14px 0; font-size: 18px; font-weight: 600; border-radius: 8px;
+    border: 2px solid var(--line); background: var(--card); }
+  .grade button.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  textarea { width: 100%; min-height: 84px; font: inherit; font-size: 16px; padding: 10px;
+    border: 2px solid var(--line); border-radius: 8px; background: var(--card); resize: vertical; }
+
+  .nav { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 16px; }
+  .nav button { padding: 14px 0; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--card); font-weight: 600; }
+  .nav button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .nav button:disabled { opacity: .4; }
+
+  .actions { margin-top: 20px; display: grid; gap: 8px; }
+  .actions button { padding: 14px; border-radius: 10px; font-weight: 600;
+    border: 1px solid var(--line); background: var(--card); }
+  .actions button.send { background: #1f4e79; color: #fff; border-color: #1f4e79; }
+  .small { font-size: 13px; color: var(--muted); text-align: center; margin-top: 10px; }
+
+  .list { margin-top: 12px; }
+  .row { display: grid; grid-template-columns: 64px 1fr auto; gap: 8px; align-items: center;
+    padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card);
+    margin-bottom: 6px; width: 100%; text-align: left; }
+  .row .p { font-weight: 700; font-size: 18px; }
+  .row .r { font-size: 14px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag { font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 10px; background: var(--chip); }
+  .tag.Yes { background: var(--yes); color: #fff; } .tag.No { background: var(--no); color: #fff; }
+  .tag.inc { background: #fdf0d5; color: var(--warn); }
+  .row.current { outline: 3px solid var(--accent); }
+
+  .login { margin-top: 15vh; }
+  .login h1 { font-size: 24px; margin: 0 0 4px; }
+  .login p { color: var(--muted); margin: 0 0 16px; }
+  .login label { display: block; font-size: 14px; font-weight: 600; margin: 12px 0 4px; }
+  .login input { width: 100%; font: inherit; font-size: 18px; padding: 12px; border-radius: 8px;
+    border: 2px solid var(--line); background: var(--card); }
+  .login button { width: 100%; margin-top: 18px; padding: 14px; font-size: 18px; font-weight: 700;
+    border: none; border-radius: 10px; background: var(--accent); color: var(--accent-ink); }
+  .err { color: var(--no); font-size: 14px; margin-top: 10px; min-height: 1.4em; }
+</style>
+</head>
+<body>
+
+<div id="storageBanner" class="banner hidden">
+  <b>This phone is not saving your entries.</b> The browser blocked storage
+  (often a private/incognito tab). Do not grade in this tab — tell the organizer.
+</div>
+
+<!-- ------------------------------------------------------------ login -->
+<section id="loginView" class="login hidden">
+  <h1>Plot Walk</h1>
+  <p id="loginStudy"></p>
+  <form id="loginForm" autocomplete="off">
+    <label for="nameInput">Your first name</label>
+    <input id="nameInput" autocapitalize="characters" autocorrect="off" spellcheck="false" required>
+    <label for="pwInput">Password</label>
+    <input id="pwInput" type="password" required>
+    <button type="submit">Start</button>
+    <div id="loginErr" class="err"></div>
+  </form>
+</section>
+
+<!-- ------------------------------------------------------------ app -->
+<section id="appView" class="hidden">
+  <header>
+    <div class="topline">
+      <div class="study" id="hdrStudy"></div>
+      <div class="who" id="hdrWho"></div>
+    </div>
+    <div class="status">
+      <span id="hdrProgress"></span>
+      <span id="hdrSaved" class="saved"></span>
+    </div>
+    <div class="bar"><div id="hdrBar"></div></div>
+  </header>
+
+  <div id="plotView">
+    <div class="card">
+      <div class="ident">
+        <div>
+          <div class="label">Plot</div>
+          <div class="plotno" id="fPlot"></div>
+        </div>
+        <div class="pos" id="fPos"></div>
+        <div class="full">
+          <div class="label">RPR / ID</div>
+          <div class="val" id="fRpr"></div>
+        </div>
+        <div class="full">
+          <div class="label">Dis Pkg</div>
+          <div class="val" id="fDis"></div>
+        </div>
+      </div>
+
+      <h2>Pick <span class="req">required</span></h2>
+      <div class="pick" id="pickBtns">
+        <button type="button" data-v="Yes">Yes</button>
+        <button type="button" data-v="No">No</button>
+      </div>
+
+      <h2>Grade <span class="req">optional · 1 low – 10 high</span></h2>
+      <div class="grade" id="gradeBtns"></div>
+      <div class="hint">Tap a selected grade again to clear it.</div>
+
+      <h2>Comments <span class="req">optional</span></h2>
+      <textarea id="commentBox" placeholder="Anything worth noting about this plot"></textarea>
+    </div>
+
+    <div class="nav">
+      <button type="button" id="prevBtn">&#8592; Prev</button>
+      <button type="button" id="listBtn">All plots</button>
+      <button type="button" id="nextBtn" class="primary">Next &#8594;</button>
+    </div>
+  </div>
+
+  <div id="listView" class="hidden">
+    <div class="list" id="plotList"></div>
+  </div>
+
+  <div class="actions">
+    <button type="button" class="send" id="sendBtn">Send my data</button>
+    <button type="button" id="switchBtn">Switch grader</button>
+  </div>
+  <div class="small" id="footNote"></div>
+</section>
+
+<script>
+"use strict";
+// Filled in by build_page.py.
+const CONFIG = {"study": "F26LB T844 Round F1", "sealed": {"salt": "zFlkteJV1UamgzUl9+/iag==", "iv": "I+zSCRGqPhDmpDTJ", "iter": 600000, "ct": "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"}};
+
+const STORE_PREFIX = "plotwalk:v1:" + CONFIG.study + ":";
+const SESSION_KEY = STORE_PREFIX + "session";
+const KEY_KEY = STORE_PREFIX + "key";
+let PLOTS = [];           // filled in by unlock()
+
+let grader = null;        // normalized name
+let entries = {};         // plot -> {pick, grade, comment, updated}
+let current = 0;          // index into PLOTS
+let storageOk = true;
+
+const $ = id => document.getElementById(id);
+
+// ---------------------------------------------------------------- storage
+// Every change is written straight to localStorage before anything else
+// happens. If storage fails, the banner says so; we never pretend to save.
+function storeGet(key) {
+  try { return localStorage.getItem(key); } catch (e) { return null; }
+}
+function storeSet(key, value) {
+  try { localStorage.setItem(key, value); return true; }
+  catch (e) { storageOk = false; $("storageBanner").classList.remove("hidden"); return false; }
+}
+function checkStorage() {
+  const probe = STORE_PREFIX + "probe";
+  try {
+    localStorage.setItem(probe, "1");
+    const ok = localStorage.getItem(probe) === "1";
+    localStorage.removeItem(probe);
+    if (!ok) throw new Error("readback");
+  } catch (e) {
+    storageOk = false;
+    $("storageBanner").classList.remove("hidden");
+  }
+  // Ask the browser not to evict our data under storage pressure.
+  if (navigator.storage && navigator.storage.persist) {
+    navigator.storage.persist().catch(() => {});
+  }
+}
+function dataKey(name) { return STORE_PREFIX + "data:" + name; }
+
+function loadEntries(name) {
+  const raw = storeGet(dataKey(name));
+  if (!raw) return {};
+  try { return JSON.parse(raw).entries || {}; } catch (e) { return {}; }
+}
+function saveEntries() {
+  const ok = storeSet(dataKey(grader), JSON.stringify({ grader, study: CONFIG.study, entries }));
+  $("hdrSaved").textContent = ok ? "✓ saved on this phone" : "NOT SAVED";
+  $("hdrSaved").style.color = ok ? "" : "var(--no)";
+  return ok;
+}
+function saveSession() {
+  storeSet(SESSION_KEY, JSON.stringify({ grader, current }));
+}
+
+// ---------------------------------------------------------------- unlock
+// The plot list is AES-GCM ciphertext; the key is derived from the password
+// with PBKDF2. A wrong password fails GCM's integrity check, so "decrypts"
+// and "password correct" are the same test. Once unlocked, the raw key is
+// kept on this phone so a reload resumes without retyping the password.
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const tob64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+
+async function deriveKey(password) {
+  const sealed = CONFIG.sealed;
+  const base = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    { name: "PBKDF2", hash: "SHA-256", salt: unb64(sealed.salt), iterations: sealed.iter },
+    base, { name: "AES-GCM", length: 256 }, true, ["decrypt"]);
+}
+async function unlock(key) {
+  const sealed = CONFIG.sealed;
+  try {
+    const plain = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: unb64(sealed.iv) }, key, unb64(sealed.ct));
+    PLOTS = JSON.parse(new TextDecoder().decode(plain)).plots;
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+async function rememberKey(key) {
+  // Tied to this build's salt: a rebuilt page with a new password simply
+  // fails to unlock with the old key and falls back to the login screen.
+  const raw = await crypto.subtle.exportKey("raw", key);
+  storeSet(KEY_KEY, JSON.stringify({ salt: CONFIG.sealed.salt, key: tob64(raw) }));
+}
+async function rememberedKey() {
+  let saved = null;
+  try { saved = JSON.parse(storeGet(KEY_KEY) || "null"); } catch (e) { saved = null; }
+  if (!saved || saved.salt !== CONFIG.sealed.salt) return null;
+  try {
+    return await crypto.subtle.importKey("raw", unb64(saved.key), "AES-GCM", false, ["decrypt"]);
+  } catch (e) { return null; }
+}
+
+// ---------------------------------------------------------------- login
+function normalizeName(s) {
+  return s.trim().replace(/\s+/g, " ").toUpperCase();
+}
+
+$("loginForm").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const name = normalizeName($("nameInput").value);
+  if (!name) { $("loginErr").textContent = "Enter your first name."; return; }
+  const btn = $("loginForm").querySelector("button");
+  btn.disabled = true; btn.textContent = "Unlocking…";
+  $("loginErr").textContent = "";
+  try {
+    const key = await deriveKey($("pwInput").value);
+    if (!(await unlock(key))) { $("loginErr").textContent = "Wrong password."; return; }
+    await rememberKey(key);
+    $("pwInput").value = "";
+    startAs(name, 0);
+  } finally {
+    btn.disabled = false; btn.textContent = "Start";
+  }
+});
+
+function startAs(name, index) {
+  grader = name;
+  entries = loadEntries(name);
+  current = Math.min(Math.max(index || 0, 0), PLOTS.length - 1);
+  saveSession();
+  $("loginView").classList.add("hidden");
+  $("appView").classList.remove("hidden");
+  $("hdrWho").textContent = grader;
+  if (storageOk) $("hdrSaved").textContent = "✓ saved on this phone";
+  showPlot();
+}
+
+$("switchBtn").addEventListener("click", () => {
+  if (!confirm("Switch grader? " + grader + "'s entries stay saved on this phone.")) return;
+  storeSet(SESSION_KEY, "");
+  grader = null;
+  $("appView").classList.add("hidden");
+  $("loginView").classList.remove("hidden");
+  $("nameInput").value = "";
+  $("loginErr").textContent = "";
+});
+
+// ---------------------------------------------------------------- entry
+function entryFor(plot) { return entries[plot] || { pick: "", grade: "", comment: "" }; }
+function hasAny(e) { return !!(e && (e.pick || e.grade || (e.comment && e.comment.trim()))); }
+
+function update(field, value) {
+  const plot = PLOTS[current].plot;
+  const e = Object.assign({}, entryFor(plot));
+  e[field] = value;
+  e.updated = new Date().toISOString();
+  if (hasAny(e)) entries[plot] = e; else delete entries[plot];
+  saveEntries();
+  renderInputs();
+  renderProgress();
+}
+
+function buildGradeButtons() {
+  const box = $("gradeBtns");
+  for (let g = 1; g <= 10; g++) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = g; b.dataset.v = String(g);
+    box.appendChild(b);
+  }
+  box.addEventListener("click", ev => {
+    const b = ev.target.closest("button"); if (!b) return;
+    const cur = entryFor(PLOTS[current].plot).grade;
+    update("grade", cur === b.dataset.v ? "" : b.dataset.v);
+  });
+  $("pickBtns").addEventListener("click", ev => {
+    const b = ev.target.closest("button"); if (!b) return;
+    const cur = entryFor(PLOTS[current].plot).pick;
+    update("pick", cur === b.dataset.v ? "" : b.dataset.v);
+  });
+  $("commentBox").addEventListener("input", ev => update("comment", ev.target.value));
+}
+
+function renderInputs() {
+  const e = entryFor(PLOTS[current].plot);
+  for (const b of $("pickBtns").children) b.classList.toggle("on", b.dataset.v === e.pick);
+  for (const b of $("gradeBtns").children) b.classList.toggle("on", b.dataset.v === e.grade);
+  if (document.activeElement !== $("commentBox")) $("commentBox").value = e.comment || "";
+}
+
+function renderProgress() {
+  const done = PLOTS.filter(p => entryFor(p.plot).pick).length;
+  $("hdrProgress").textContent = done + " / " + PLOTS.length + " picked";
+  $("hdrBar").style.width = (100 * done / PLOTS.length) + "%";
+}
+
+function showPlot() {
+  const p = PLOTS[current];
+  $("fPlot").textContent = p.plot;
+  $("fRpr").textContent = p.rpr || "—";
+  $("fDis").textContent = p.dis || "—";
+  $("fPos").textContent = (current + 1) + " of " + PLOTS.length;
+  $("prevBtn").disabled = current === 0;
+  $("nextBtn").disabled = current === PLOTS.length - 1;
+  $("commentBox").value = entryFor(p.plot).comment || "";
+  renderInputs();
+  renderProgress();
+  $("listView").classList.add("hidden");
+  $("plotView").classList.remove("hidden");
+  $("listBtn").textContent = "All plots";
+  saveSession();
+  window.scrollTo(0, 0);
+}
+
+function go(delta) {
+  const next = current + delta;
+  if (next < 0 || next >= PLOTS.length) return;
+  current = next;
+  showPlot();
+}
+$("prevBtn").addEventListener("click", () => go(-1));
+$("nextBtn").addEventListener("click", () => go(1));
+
+// ---------------------------------------------------------------- list
+function showList() {
+  const box = $("plotList");
+  box.textContent = "";
+  PLOTS.forEach((p, i) => {
+    const e = entryFor(p.plot);
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "row" + (i === current ? " current" : "");
+    const a = document.createElement("span"); a.className = "p"; a.textContent = p.plot;
+    const b = document.createElement("span"); b.className = "r";
+    b.textContent = (p.rpr || "—") + (e.grade ? "  ·  grade " + e.grade : "");
+    const c = document.createElement("span");
+    if (e.pick) { c.className = "tag " + e.pick; c.textContent = e.pick; }
+    else if (hasAny(e)) { c.className = "tag inc"; c.textContent = "no pick"; }
+    else { c.className = "tag"; c.textContent = "–"; }
+    row.append(a, b, c);
+    row.addEventListener("click", () => { current = i; showPlot(); });
+    box.appendChild(row);
+  });
+  $("plotView").classList.add("hidden");
+  $("listView").classList.remove("hidden");
+  const cur = box.children[current];
+  if (cur) cur.scrollIntoView({ block: "center" });
+}
+$("listBtn").addEventListener("click", showList);
+document.addEventListener("click", ev => {
+  // The list view's own "back" is tapping any row; also allow the header.
+  if (ev.target.closest("header") && !$("listView").classList.contains("hidden")) showPlot();
+});
+
+// ---------------------------------------------------------------- export
+const CSV_COLUMNS = ["Grader", "Study", "Plot", "RPR/ID", "Dis Pkg", "Germplasm",
+                     "Pick", "Grade", "Comment", "Updated"];
+
+function csvCell(v) {
+  const s = v == null ? "" : String(v);
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function buildCsv() {
+  const lines = [CSV_COLUMNS.join(",")];
+  for (const p of PLOTS) {
+    const e = entries[p.plot];
+    if (!hasAny(e)) continue;
+    lines.push([grader, CONFIG.study, p.plot, p.rpr, p.dis, p.germplasm,
+                e.pick, e.grade, e.comment, e.updated].map(csvCell).join(","));
+  }
+  // BOM so Excel opens accented names correctly.
+  return "﻿" + lines.join("\r\n") + "\r\n";
+}
+function stamp() {
+  const d = new Date(), z = n => String(n).padStart(2, "0");
+  return d.getFullYear() + z(d.getMonth() + 1) + z(d.getDate()) + "-" + z(d.getHours()) + z(d.getMinutes());
+}
+function safeName(s) { return s.replace(/[^A-Za-z0-9._-]+/g, "_"); }
+
+$("sendBtn").addEventListener("click", async () => {
+  const count = Object.keys(entries).length;
+  if (!count) { alert("Nothing entered yet."); return; }
+  const fileName = safeName(CONFIG.study + "_" + grader + "_" + stamp()) + ".csv";
+  const csv = buildCsv();
+  const file = new File([csv], fileName, { type: "text/csv" });
+  const title = "Plot walk - " + CONFIG.study + " - " + grader;
+  const text = grader + ": " + count + " plots graded in " + CONFIG.study + ".";
+
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title, text });
+      $("footNote").textContent = "Shared " + fileName;
+      return;
+    } catch (e) {
+      if (e && e.name === "AbortError") return;  // user closed the share sheet
+      // anything else: fall through to download
+    }
+  }
+  const url = URL.createObjectURL(file);
+  const a = document.createElement("a");
+  a.href = url; a.download = fileName;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  $("footNote").textContent = "Saved " + fileName + " to Downloads — send that file to the organizer.";
+});
+
+// ---------------------------------------------------------------- boot
+checkStorage();
+buildGradeButtons();
+document.title = "Plot Walk – " + CONFIG.study;
+$("loginStudy").textContent = CONFIG.study;
+$("hdrStudy").textContent = CONFIG.study;
+
+(async function resume() {
+  if (!(window.crypto && crypto.subtle)) {
+    // WebCrypto exists only in secure contexts (https, or a local file).
+    $("loginView").classList.remove("hidden");
+    $("loginForm").querySelector("button").disabled = true;
+    $("loginErr").textContent = "This browser cannot unlock the page. Open it from its https:// link.";
+    return;
+  }
+  const raw = storeGet(SESSION_KEY);
+  let s = null;
+  try { s = raw ? JSON.parse(raw) : null; } catch (e) { s = null; }
+  const key = s && s.grader ? await rememberedKey() : null;
+  if (key && await unlock(key)) startAs(s.grader, s.current);
+  else $("loginView").classList.remove("hidden");
+})();
+</script>
+</body>
+</html>
