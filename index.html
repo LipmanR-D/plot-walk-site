@@ -8,7 +8,8 @@
 <link rel="icon" href="logo.png">
 <style>
   :root { --bg: #f6f5f1; --card: #fff; --ink: #1d1d1b; --muted: #6b6a64; --line: #dddbd3;
-          --brand: #ef4524; --leaf: #d6df22; }
+          --brand: #ef4524; --leaf: #d6df22; --warn: #b7791f; --yes: #2f7d3b; }
+  * { box-sizing: border-box; }
   body { margin: 0 auto; max-width: 560px; padding: 8vh 16px 24px; background: var(--bg); color: var(--ink);
          font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   .brand { text-align: center; margin-bottom: 24px; }
@@ -16,12 +17,24 @@
   h1 { font-size: 26px; margin: 0 0 4px; }
   .brand p { color: var(--muted); margin: 0; }
   ul { list-style: none; padding: 0; margin: 0; }
-  a { display: flex; justify-content: space-between; align-items: center; padding: 16px;
+  a.walk { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 16px;
       margin-bottom: 8px; border: 1px solid var(--line); border-left: 5px solid var(--brand);
-      border-radius: 10px; background: var(--card); color: var(--ink); font-weight: 600;
-      font-size: 17px; text-decoration: none; }
-  a::after { content: "\203A"; color: var(--brand); font-size: 26px; line-height: 1; }
-  a:active { background: #fdf1ee; }
+      border-radius: 10px; background: var(--card); color: var(--ink); text-decoration: none; }
+  a.walk::after { content: "\203A"; color: var(--brand); font-size: 26px; line-height: 1; }
+  a.walk:active { background: #fdf1ee; }
+  .nm { display: block; font-weight: 600; font-size: 17px; }
+  .line { display: block; font-size: 13px; color: var(--yes); margin-top: 2px; }
+  .line.unsent { color: var(--warn); font-weight: 600; }
+
+  #mine { margin-top: 28px; }
+  #mine h2 { font-size: 16px; margin: 0 0 4px; }
+  #mine p { margin: 0 0 10px; color: var(--muted); font-size: 14px; }
+  #mine button { display: block; width: 100%; text-align: left; padding: 14px; margin-bottom: 8px;
+      border-radius: 10px; border: 1px solid #1f4e79; background: #1f4e79; color: #fff;
+      font: inherit; font-weight: 600; cursor: pointer; }
+  #mine button small { display: block; font-weight: 400; color: #dbe6f1; margin-top: 2px; }
+  #note { font-size: 13px; color: var(--muted); text-align: center; min-height: 1.4em; }
+
   footer { margin-top: 28px; text-align: center; font-size: 13px; color: var(--muted); }
   footer::before { content: ""; display: block; width: 40px; height: 3px; margin: 0 auto 10px;
                    background: var(--leaf); border-radius: 2px; }
@@ -34,9 +47,218 @@
     <p>Pick the field you are walking. You will need the password from the organizer.</p>
   </div>
   <ul>
-    <li><a href="f26lb-t844-round-f1.html">F26LB T844 Round F1</a></li>
-    <li><a href="s26ll-t796-round-f1s.html">S26LL T796 Round F1s</a></li>
+    <li><a class="walk" href="f26lb-t844-round-f1.html" data-study="F26LB T844 Round F1"><span><span class="nm">F26LB T844 Round F1</span><span class="st"></span></span></a></li>
+    <li><a class="walk" href="s26ll-t796-round-f1s.html" data-study="S26LL T796 Round F1s"><span><span class="nm">S26LL T796 Round F1s</span><span class="st"></span></span></a></li>
   </ul>
+
+  <section id="mine" hidden>
+    <h2>Saved on this phone</h2>
+    <p>Sends everything saved for that person across every walk, not just what is new.</p>
+    <div id="sendButtons"></div>
+    <div id="note"></div>
+  </section>
+
   <footer>Lipman Family Farms · Research &amp; Development</footer>
+
+<script>
+"use strict";
+// ---------------------------------------------------------------- shared
+// Inlined into every walk page (build_page.py) and the index (publish.py),
+// so both read and send saved data the same way.
+//
+// All pages on the site share one origin, so one phone's localStorage holds
+// every walk's entries, one record per (study, grader):
+//
+//   plotwalk:v1:<study>:data:<GRADER> = {grader, study, entries, changed, sentAt}
+//   entries[plot] = {pick, grade, yield, comment, updated, i, rpr, dis, germplasm}
+//
+// rpr/dis/germplasm/i (walk order) are copied onto each entry so any page can
+// export any walk without decrypting that walk's plot list.
+//
+// A send is ALWAYS a complete snapshot of what is saved, never only what
+// changed: if a send fails, the next one still carries everything. sentAt
+// only drives the "not sent" reminder; it never decides what goes in a file.
+const PW = (() => {
+  const ROOT = "plotwalk:v1:";
+  const DATA = ":data:";
+  const COLUMNS = ["Grader", "Study", "Plot", "RPR/ID", "Dis Pkg", "Germplasm",
+                   "Pick", "Grade", "Est Yield (Bins/Acre)", "Comment", "Updated"];
+
+  function get(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+  function put(key, value) {
+    try { localStorage.setItem(key, value); return true; } catch (e) { return false; }
+  }
+
+  function dataKey(study, grader) { return ROOT + study + DATA + grader; }
+
+  function load(study, grader) {
+    let doc = null;
+    try { doc = JSON.parse(get(dataKey(study, grader)) || "null"); } catch (e) { doc = null; }
+    if (!doc || typeof doc !== "object") doc = {};
+    return { grader, study, entries: doc.entries || {}, changed: doc.changed || "",
+             sentAt: doc.sentAt || "" };
+  }
+  function save(doc) {
+    return put(dataKey(doc.study, doc.grader), JSON.stringify(
+      { grader: doc.grader, study: doc.study, entries: doc.entries,
+        changed: doc.changed, sentAt: doc.sentAt }));
+  }
+
+  // Every (study, grader) on this phone that holds at least one entry.
+  function all() {
+    const out = [];
+    let n = 0;
+    try { n = localStorage.length; } catch (e) { return out; }
+    for (let i = 0; i < n; i++) {
+      let key = null;
+      try { key = localStorage.key(i); } catch (e) { key = null; }
+      if (!key || !key.startsWith(ROOT)) continue;
+      const at = key.lastIndexOf(DATA);
+      if (at < ROOT.length) continue;
+      const doc = load(key.slice(ROOT.length, at), key.slice(at + DATA.length));
+      if (Object.keys(doc.entries).length) out.push(doc);
+    }
+    out.sort((a, b) => a.study.localeCompare(b.study) || a.grader.localeCompare(b.grader));
+    return out;
+  }
+
+  // How much of a record has not been sent since it last changed. Entries
+  // changed after the last send count; so does a cleared entry (changed
+  // moves on even though the entry is gone).
+  function unsent(doc) {
+    const since = doc.sentAt || "";
+    let count = 0;
+    for (const e of Object.values(doc.entries)) {
+      if (!since || (e.updated || "") > since) count++;
+    }
+    return { count, dirty: !since || (doc.changed || "") > since };
+  }
+
+  function cell(v) {
+    const s = v == null ? "" : String(v);
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  function csv(docs) {
+    const lines = [COLUMNS.join(",")];
+    for (const doc of docs) {
+      const rows = Object.entries(doc.entries).sort((a, b) =>
+        ((a[1].i ?? 1e9) - (b[1].i ?? 1e9)) || a[0].localeCompare(b[0]));
+      for (const [plot, e] of rows) {
+        lines.push([doc.grader, doc.study, plot, e.rpr, e.dis, e.germplasm, e.pick,
+                    e.grade, e.yield, e.comment, e.updated].map(cell).join(","));
+      }
+    }
+    // BOM so Excel opens accented names correctly.
+    return "﻿" + lines.join("\r\n") + "\r\n";
+  }
+
+  function stamp() {
+    const d = new Date(), z = n => String(n).padStart(2, "0");
+    return d.getFullYear() + z(d.getMonth() + 1) + z(d.getDate()) + "-" + z(d.getHours()) + z(d.getMinutes());
+  }
+  function safeName(s) { return s.replace(/[^A-Za-z0-9._-]+/g, "_"); }
+
+  // Send a complete snapshot of `docs` (all one grader). Resolves to
+  // "shared", "downloaded" or "cancelled"; on the first two, every doc is
+  // marked sent as of the moment the snapshot was taken, so anything
+  // entered while the share sheet was open still counts as not sent.
+  async function send(docs, fileBase) {
+    const snapshotAt = new Date().toISOString();
+    const plots = docs.reduce((n, d) => n + Object.keys(d.entries).length, 0);
+    const grader = docs[0].grader;
+    const fileName = safeName(fileBase + "_" + grader + "_" + stamp()) + ".csv";
+    const file = new File([csv(docs)], fileName, { type: "text/csv" });
+    const title = "Plot walk - " + grader;
+    const text = grader + ": " + plots + " plot(s) across " + docs.length + " walk(s).";
+
+    let how = null;
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title, text });
+        how = "shared";
+      } catch (e) {
+        if (e && e.name === "AbortError") return { how: "cancelled", fileName };
+        // anything else: fall through to download
+      }
+    }
+    if (!how) {
+      const url = URL.createObjectURL(file);
+      const a = document.createElement("a");
+      a.href = url; a.download = fileName;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      how = "downloaded";
+    }
+    for (const d of docs) {
+      const fresh = load(d.study, d.grader);       // re-read: never clobber newer entries
+      fresh.sentAt = snapshotAt;
+      save(fresh);
+    }
+    return { how, fileName, plots };
+  }
+
+  function rememberGrader(name) { put(ROOT + "lastGrader", name); }
+  function lastGrader() { return get(ROOT + "lastGrader") || ""; }
+
+  return { ROOT, load, save, all, unsent, csv, send, rememberGrader, lastGrader };
+})();
+
+
+function plural(n, word) { return n + " " + word + (n === 1 ? "" : "s"); }
+function statusText(d) {
+  const u = PW.unsent(d), n = Object.keys(d.entries).length;
+  const tail = u.count ? u.count + " not sent" : u.dirty ? "changes not sent" : "all sent";
+  return { text: d.grader + " · " + plural(n, "plot") + " · " + tail, unsent: !!(u.count || u.dirty) };
+}
+
+function render() {
+  const docs = PW.all();
+
+  // Per-walk status, for whoever has graded it on this phone.
+  document.querySelectorAll("a.walk").forEach(a => {
+    const box = a.querySelector(".st");
+    box.textContent = "";
+    for (const d of docs.filter(d => d.study === a.dataset.study)) {
+      const s = statusText(d);
+      const line = document.createElement("span");
+      line.className = "line" + (s.unsent ? " unsent" : "");
+      line.textContent = s.text;
+      box.appendChild(line);
+    }
+  });
+
+  // One "Send all" per person with data here (several can share a phone).
+  // Includes walks no longer listed above: whatever is saved gets sent.
+  const graders = [...new Set(docs.map(d => d.grader))].sort();
+  const buttons = document.getElementById("sendButtons");
+  buttons.textContent = "";
+  document.getElementById("mine").hidden = !graders.length;
+  for (const g of graders) {
+    const mine = docs.filter(d => d.grader === g);
+    const plots = mine.reduce((n, d) => n + Object.keys(d.entries).length, 0);
+    const notSent = mine.reduce((n, d) => n + PW.unsent(d).count, 0);
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = "Send all — " + g;
+    const small = document.createElement("small");
+    small.textContent = plural(mine.length, "walk") + " · " + plural(plots, "plot")
+                        + (notSent ? " · " + notSent + " not sent" : " · all sent");
+    b.appendChild(small);
+    b.addEventListener("click", async () => {
+      const r = await PW.send(PW.all().filter(d => d.grader === g), "PlotWalk_ALL");
+      if (r.how === "cancelled") return;
+      document.getElementById("note").textContent = r.how === "shared"
+        ? "Sent " + r.fileName
+        : "Saved " + r.fileName + " to Downloads — send that file to the organizer.";
+      render();
+    });
+    buttons.appendChild(b);
+  }
+}
+
+render();
+// Returning here with the back button can show a cached copy of the page.
+window.addEventListener("pageshow", render);
+</script>
 </body>
 </html>
