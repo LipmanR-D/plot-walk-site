@@ -197,10 +197,54 @@ const PW = (() => {
     return { how, fileName, plots };
   }
 
+  // Opened inside another app's built-in browser (a QR scanner, Facebook,
+  // the Google app...)? Those keep their own storage, sometimes only until
+  // the app closes, so a whole walk can vanish. Heuristic, so it errs
+  // towards silence: some in-app browsers look exactly like Safari and
+  // cannot be told apart.
+  function inAppBrowser() {
+    const ua = navigator.userAgent || "";
+    if (/FBAN|FBAV|FB_IAB|Instagram|LinkedInApp|Snapchat|Line\/|MicroMessenger|GSA\/|Twitter/i.test(ua)) return true;
+    if (/; wv\)/.test(ua)) return true;                       // Android WebView
+    const ios = /iPhone|iPad|iPod/.test(ua);
+    // iOS: real Safari, Chrome, Firefox and Edge all carry "Safari/"; a bare
+    // WKWebView inside another app does not. Home-screen apps are excluded.
+    return ios && !/Safari\//.test(ua) && !navigator.standalone;
+  }
+  function warnIfInApp() {
+    if (!inAppBrowser() || document.getElementById("inAppWarning")) return false;
+    const box = document.createElement("div");
+    box.id = "inAppWarning";
+    box.setAttribute("role", "alert");
+    box.style.cssText = "margin:10px 0;padding:12px;border-radius:8px;font-size:15px;line-height:1.4;"
+      + "background:#fdf0d5;color:#5c3d06;border:1px solid #e6c27a";
+    const b = document.createElement("b");
+    b.textContent = "You opened this inside another app.";
+    const p = document.createElement("div");
+    p.textContent = "Your entries may be lost when that app closes. Open this link in "
+      + "Safari (iPhone) or Chrome (Android) instead. Tip: scan the code with your Camera app.";
+    const link = document.createElement("div");
+    link.style.cssText = "margin-top:8px;font-family:monospace;font-size:13px;word-break:break-all;user-select:all";
+    link.textContent = location.href;
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.textContent = "Copy link";
+    copy.style.cssText = "margin-top:8px;padding:8px 14px;border-radius:8px;border:1px solid #b7791f;"
+      + "background:#fff;font:inherit;font-weight:600";
+    copy.addEventListener("click", async () => {
+      try { await navigator.clipboard.writeText(location.href); copy.textContent = "Copied \u2713"; }
+      catch (e) { copy.textContent = "Press and hold the link above to copy it"; }
+    });
+    box.append(b, p, link, copy);
+    document.body.insertBefore(box, document.body.firstChild);
+    return true;
+  }
+
   function rememberGrader(name) { put(ROOT + "lastGrader", name); }
   function lastGrader() { return get(ROOT + "lastGrader") || ""; }
 
-  return { ROOT, load, save, all, unsent, csv, send, rememberGrader, lastGrader };
+  return { ROOT, load, save, all, unsent, csv, send, rememberGrader, lastGrader,
+           inAppBrowser, warnIfInApp };
 })();
 
 
@@ -256,6 +300,7 @@ function render() {
   }
 }
 
+PW.warnIfInApp();
 render();
 // Returning here with the back button can show a cached copy of the page.
 window.addEventListener("pageshow", render);
